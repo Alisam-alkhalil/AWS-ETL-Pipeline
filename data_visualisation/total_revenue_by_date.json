@@ -1,0 +1,94 @@
+{
+    "id": 1,
+    "type": "table",
+    "title": "Total Revenue By Date",
+    "gridPos": {
+        "x": 0,
+        "y": 0,
+        "h": 8,
+        "w": 12
+    },
+    "fieldConfig": {
+        "defaults": {
+            "custom": {
+                "align": "left",
+                "cellOptions": {
+                    "type": "auto",
+                    "wrapText": false
+                },
+                "inspect": false
+            },
+            "mappings": [],
+            "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                    {
+                        "color": "green",
+                        "value": null
+                    },
+                    {
+                        "color": "red",
+                        "value": 80
+                    }
+                ]
+            },
+            "color": {
+                "mode": "shades"
+            }
+        },
+        "overrides": []
+    },
+    "pluginVersion": "11.4.0",
+    "targets": [
+        {
+            "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "de6simekua0owe"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "rawQuery": true,
+            "rawSql": "SELECT \r\n    DATE(transaction.timestamp) AS \"Date\",\r\n    SUM(transaction.total_price) AS \"Total Revenue\"\r\nFROM \r\n    transaction\r\nGROUP BY \r\n    DATE(transaction.timestamp)\r\nORDER BY \r\n    \"Date\" ASC;\r\n",
+            "refId": "A",
+            "sql": {
+                "columns": [
+                    {
+                        "parameters": [],
+                        "type": "function"
+                    }
+                ],
+                "groupBy": [
+                    {
+                        "property": {
+                            "type": "string"
+                        },
+                        "type": "groupBy"
+                    }
+                ],
+                "limit": 50
+            }
+        }
+    ],
+    "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "de6simekua0owe"
+    },
+    "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+            "show": false,
+            "reducer": [
+                "sum"
+            ],
+            "countRows": false,
+            "fields": ""
+        },
+        "sortBy": [
+            {
+                "desc": false,
+                "displayName": "total revenue"
+            }
+        ]
+    }
+}

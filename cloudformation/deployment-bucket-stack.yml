@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  Deployment bucket stack for CoffeETL's final project.
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: 'coffeetl-project-deployment-bucket'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      Tags:
+        - Key: Name
+          Value: 'coffeetl-project-deployment-bucket'
+  
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument: 
+        Statement:
+          - Sid: "AllowSSLRequestsOnly"
+            Action: "s3:*"
+            Principal: "*"
+            Effect: "Deny"
+            Resource:
+              - "arn:aws:s3:::coffeetl-project-deployment-bucket"
+              - "arn:aws:s3:::coffeetl-project-deployment-bucket/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"

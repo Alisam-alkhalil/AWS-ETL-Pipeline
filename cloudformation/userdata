@@ -1,0 +1,45 @@
+Content-Type: multipart/mixed; boundary="//"
+MIME-Version: 1.0
+
+--//
+Content-Type: text/cloud-config; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="cloud-config.txt"
+
+#cloud-config
+cloud_final_modules:
+- [scripts-user, always]
+
+--//
+Content-Type: text/x-shellscript; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Content-Disposition: attachment; filename="userdata.txt"
+
+#!/bin/bash
+yum install telnet -y
+yum install docker -y
+service docker start
+usermod -a -G docker ec2-user
+chkconfig docker on
+
+#!/bin/bash
+echo "[USERDATA] Stopping and removing existing Docker containers"
+docker stop $(docker ps -aq) >/dev/null 2>&1
+docker rm $(docker ps -aq) >/dev/null 2>&1
+echo "[USERDATA] All Docker containers stopped and removed."
+
+echo "[USERDATA] Creating docker volume for grafana"
+su ec2-user -c 'docker volume create grafana-storage ;'
+echo "[USERDATA] Grafana docker volume created"
+
+echo "[USERDATA] Removing grafana swagger page"
+echo '<h1>Swagger disabled</h1>' > /home/ec2-user/no-swagger.html
+
+echo "[USERDATA] Starting grafana service"
+su ec2-user -c 'docker run -d -p 80:3000 --rm \
+    --volume /home/ec2-user/no-swagger.html:/usr/share/grafana/public/views/swagger.html \
+    --volume grafana-storage:/var/lib/grafana grafana/grafana ;'
+echo "[USERDATA] Grafana service started"
+--//--

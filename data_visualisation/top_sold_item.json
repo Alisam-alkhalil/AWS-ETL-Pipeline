@@ -1,0 +1,89 @@
+{
+    "id": 1,
+    "type": "table",
+    "title": "Top Sold Item Per Branch",
+    "gridPos": {
+        "x": 0,
+        "y": 0,
+        "h": 8,
+        "w": 12
+    },
+    "fieldConfig": {
+        "defaults": {
+            "custom": {
+                "align": "left",
+                "cellOptions": {
+                    "type": "auto",
+                    "wrapText": false
+                },
+                "inspect": false
+            },
+            "mappings": [],
+            "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                    {
+                        "color": "green",
+                        "value": null
+                    },
+                    {
+                        "color": "red",
+                        "value": 80
+                    }
+                ]
+            },
+            "color": {
+                "fixedColor": "text",
+                "mode": "shades"
+            }
+        },
+        "overrides": []
+    },
+    "pluginVersion": "11.4.0",
+    "targets": [
+        {
+            "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "de6simekua0owe"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "rawQuery": true,
+            "rawSql": "SELECT \r\n    b.name AS branch_name, \r\n    i.name AS item_name, \r\n    SUM(ti.quantity) AS total_quantity_sold\r\nFROM \r\n    transaction t\r\nJOIN \r\n    transaction_item ti ON t.id = ti.transaction_id\r\nJOIN \r\n    item i ON ti.item_id = i.id\r\nJOIN \r\n    branch b ON t.branch_id = b.id\r\nGROUP BY \r\n    b.name, i.name\r\nORDER BY \r\n    total_quantity_sold DESC;\r\n",
+            "refId": "A",
+            "sql": {
+                "columns": [
+                    {
+                        "parameters": [],
+                        "type": "function"
+                    }
+                ],
+                "groupBy": [
+                    {
+                        "property": {
+                            "type": "string"
+                        },
+                        "type": "groupBy"
+                    }
+                ],
+                "limit": 50
+            }
+        }
+    ],
+    "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "de6simekua0owe"
+    },
+    "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+            "show": true,
+            "reducer": [
+                "sum"
+            ],
+            "countRows": false,
+            "fields": ""
+        }
+    }
+}

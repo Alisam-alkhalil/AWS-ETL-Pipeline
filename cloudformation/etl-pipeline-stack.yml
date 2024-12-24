@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  ETL pipeline stack for CoffeETL's final project.
+
+Parameters:
+  NetworkStackName:
+    Type: String
+    Default: project-networking
+    Description: Network stack with VPC containing the Redshift instance.
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Description: Latest AMI for Amazon Linux v2 (auto-lookup).
+  EC2InstanceProfileRoleName:
+    Type: String
+    Default: de-academy-ec2-role-instance-profile
+    Description: The shared EC2 instance profile name to use.
+  EC2InstanceIngressIp:
+    Type: String  # TODO: Should this be a 1-pc thing???
+    Description: Custom IP address for Grafana HTTP ingress rule.
+  EC2UserData:
+    Type: String
+    Default: ""
+    Description: Userdata script to run on EC2 startup.
+  SshKeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of the EC2 KeyPair to use.
+    Default: coffeetl-ssh-kp-notrsa :)
+
+Resources:
+  CoffeETLLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda function running CoffeETL's extract and transform stages.
+      FunctionName: 'coffeetl-project-etl-lambda'
+      Runtime: python3.13
+      Handler: transform_lambda_function.lambda_handler # file.fn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/lambda-execution-role'
+      Timeout: 30 
+      ReservedConcurrentExecutions: 10
+      Code: ../packagedsrc
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub '${NetworkStackName}-VPCSGID'
+        SubnetIds:
+          - Fn::ImportValue:
+              !Sub '${NetworkStackName}-PrivateSubnet0ID'
+      Tags:
+        - Key: Name
+          Value: 'coffeetl-project-etl-lambda'
+
+  CoffeETLLoadLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda function running CoffeETL's load stage.
+      FunctionName: 'coffeetl-project-load-lambda'
+      Runtime: python3.13
+      Handler: load_lambda_function.lambda_handler # file.fn
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/lambda-execution-role'
+      Timeout: 30 
+      ReservedConcurrentExecutions: 10
+      Code: ../packagedsrc
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub '${NetworkStackName}-VPCSGID'
+        SubnetIds:
+          - Fn::ImportValue:
+              !Sub '${NetworkStackName}-PrivateSubnet0ID'
+      Tags:
+        - Key: Name
+          Value: 'coffeetl-project-load-lambda'
+      Environment:
+        Variables:
+          SSM_PARAMETER_NAME:
+            Fn::Join:
+            - '_'
+            - Fn::Split:
+              - '-'
+              - 'coffeetl_redshift_settings'
+
+
+  CoffeETLRawDataBucket:
+    Type: AWS::S3::Bucket
+    DependsOn:
+      - CoffeETLRawDataBucketPermission
+      - CoffeETLLambdaFunction
+    Properties: 
+      BucketName: 'coffeetl-project-raw-data'
+      PublicAccessBlockConfiguration: # do not allow any public access
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      NotificationConfiguration: 
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt CoffeETLLambdaFunction.Arn
+      Tags:
+        - Key: Name
+          Value: 'coffeetl-project-raw-data'
+
+  CoffeETLRawDataBucketPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CoffeETLLambdaFunction
+      Principal: s3.amazonaws.com
+      SourceArn: 'arn:aws:s3:::coffeetl-project-raw-data'
+
+  CoffeETLRawDataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CoffeETLRawDataBucket
+      PolicyDocument: 
+        Statement:
+          - Sid: "AllowSSLRequestsOnly"
+            Action: "s3:*"
+            Principal: "*"
+            Effect: "Deny"
+            Resource:
+              - 'arn:aws:s3:::coffeetl-project-raw-data'
+              - 'arn:aws:s3:::coffeetl-project-raw-data/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+
+  CoffeETLTransformedDataBucket:
+    Type: AWS::S3::Bucket
+    DependsOn:
+      - CoffeETLRawDataBucketPermission
+      - CoffeETLLoadLambdaFunction
+    Properties: 
+      BucketName: 'coffeetl-project-transformed-data'
+      PublicAccessBlockConfiguration: # do not allow any public access
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      NotificationConfiguration: 
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt CoffeETLLoadLambdaFunction.Arn
+      Tags:
+        - Key: Name
+          Value: 'coffeetl-project-load-data'
+
+  CoffeETLTransformedDataBucketPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CoffeETLLoadLambdaFunction
+      Principal: s3.amazonaws.com
+      SourceArn: 'arn:aws:s3:::coffeetl-project-load-data'
+
+  CoffeETLTransformedDataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CoffeETLTransformedDataBucket
+      PolicyDocument: 
+        Statement:
+          - Sid: "AllowSSLRequestsOnly"
+            Action: "s3:*"
+            Principal: "*"
+            Effect: "Deny"
+            Resource:
+              - 'arn:aws:s3:::coffeetl-project-transformed-data'
+              - 'arn:aws:s3:::coffeetl-project-transformed-data/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  GrafanaEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Ref LatestAmiId
+      Tags:
+        - Key: Name
+          Value: coffeetl-project-ec2-grafana
+      NetworkInterfaces: # Redshift access
+        - AssociatePublicIpAddress: true
+          DeviceIndex: "0"
+          SubnetId:
+            Fn::ImportValue:
+              !Sub '${NetworkStackName}-PublicSubnet0ID'
+          GroupSet:
+            - Fn::ImportValue: !Sub '${NetworkStackName}-VPCSGID'
+            - Fn::GetAtt: GrafanaEC2InstanceSecurityGroup.GroupId
+      LaunchTemplate: # Other configs
+        LaunchTemplateId: !Ref GrafanaEC2LaunchTemplate
+        # Make sure it's up to date
+        Version: !GetAtt GrafanaEC2LaunchTemplate.LatestVersionNumber
+  
+  GrafanaEC2LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: coffeetl-project-ec2-grafana-launch-template
+      VersionDescription: '01'
+      LaunchTemplateData:
+        UserData: !Ref EC2UserData
+        KeyName: !Ref SshKeyName
+        IamInstanceProfile:
+          Name: !Ref EC2InstanceProfileRoleName
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpProtocolIpv6: disabled
+          HttpPutResponseHopLimit: 10
+          # TODO: IMDSv2 optional until all Grafana plugins support it.
+          HttpTokens: optional
+          InstanceMetadataTags: enabled
+        Monitoring:
+          Enabled: True  # Extra cloudwatch monitoring.
+        BlockDeviceMappings:  # Filesystem
+          - DeviceName: /dev/xvda
+            Ebs: # Elastic block storage
+              VolumeType: gp3
+              VolumeSize: 8
+              Encrypted: true
+              DeleteOnTermination: true
+  
+  # Access control
+  GrafanaEC2InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Sets ingress and egress rules for HTTP, HTTPS, and SSH.
+      Tags:
+        - Key: Name
+          Value: coffeetl-project-ec2-grafana
+      VpcId:
+        Fn::ImportValue:
+          !Sub '${NetworkStackName}-VPCID'
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: !Sub '${EC2InstanceIngressIp}/32' # Only our own laptops
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress: # Allow HTTP and HTTPS back out to us (http) and AWS (https)
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: !Sub '${EC2InstanceIngressIp}/32' # Only our own laptops
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+
+Outputs:
+  PublicIP:
+    Description: The public IP of the EC2 instance.
+    Value: !GetAtt GrafanaEC2Instance.PublicIp
