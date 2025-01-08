@@ -20,6 +20,7 @@ else
     exit 1
 fi
 
+set +e
 # Check that we're logged in on this profile.
 account_code=$(aws sts get-caller-identity --query "Account" --profile ${aws_profile})
 # Re-log if our session expired.
@@ -28,6 +29,7 @@ if [ ${#account_code} -eq 14 ];  then
 else 
     aws sso login --profile ${aws_profile}
 fi
+set -e
 
 # Create deployment bucket stack.
 printf "\nDeploying deployment bucket.\n"
@@ -83,4 +85,9 @@ aws cloudformation deploy \
         EC2InstanceIngressIp="${ec2_ingress_ip}" \
         EC2UserData="${ec2_userdata}"
 
-printf "\nDone."
+printf "\nDone deploying, saving output details to file...\n"
+
+aws cloudformation describe-stacks --profile ${aws_profile} \
+    --stack-name coffeetl-project-etl-stack \
+    --output yaml \
+    --query Stacks[0].Outputs > Outputs.yml

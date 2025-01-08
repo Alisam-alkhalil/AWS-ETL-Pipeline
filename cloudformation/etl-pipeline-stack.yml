@@ -39,6 +39,8 @@ Resources:
       Timeout: 30 
       ReservedConcurrentExecutions: 10
       Code: ../packagedsrc
+      LoggingConfig:
+        LogFormat: JSON
       VpcConfig:
         SecurityGroupIds:
           - Fn::ImportValue:
@@ -58,9 +60,11 @@ Resources:
       Runtime: python3.13
       Handler: load_lambda_function.lambda_handler # file.fn
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/lambda-execution-role'
-      Timeout: 30 
+      Timeout: 120 
       ReservedConcurrentExecutions: 10
       Code: ../packagedsrc
+      LoggingConfig:
+        LogFormat: JSON
       VpcConfig:
         SecurityGroupIds:
           - Fn::ImportValue:
@@ -79,7 +83,6 @@ Resources:
             - Fn::Split:
               - '-'
               - 'coffeetl_redshift_settings'
-
 
   CoffeETLRawDataBucket:
     Type: AWS::S3::Bucket
@@ -126,7 +129,6 @@ Resources:
               Bool:
                 aws:SecureTransport: "false"
 
-
   CoffeETLTransformedDataBucket:
     Type: AWS::S3::Bucket
     DependsOn:
@@ -139,21 +141,23 @@ Resources:
         BlockPublicPolicy: True
         IgnorePublicAcls: True
         RestrictPublicBuckets: True
-      NotificationConfiguration: 
-        LambdaConfigurations:
-          - Event: s3:ObjectCreated:*
-            Function: !GetAtt CoffeETLLoadLambdaFunction.Arn
       Tags:
         - Key: Name
           Value: 'coffeetl-project-load-data'
 
-  CoffeETLTransformedDataBucketPermission:
-    Type: AWS::Lambda::Permission
+  CoffeETLQueueEventSource:
+    Type: AWS::Lambda::EventSourceMapping
     Properties:
-      Action: lambda:InvokeFunction
+      EventSourceArn: !GetAtt CoffeETLLoadQueue.Arn
       FunctionName: !Ref CoffeETLLoadLambdaFunction
-      Principal: s3.amazonaws.com
-      SourceArn: 'arn:aws:s3:::coffeetl-project-load-data'
+
+#  CoffeETLTransformedDataBucketPermission:
+#    Type: AWS::Lambda::Permission
+#    Properties:
+#      Action: lambda:InvokeFunction
+#      FunctionName: !Ref CoffeETLLoadLambdaFunction
+#      Principal: s3.amazonaws.com
+#      SourceArn: 'arn:aws:s3:::coffeetl-project-load-data'
 
   CoffeETLTransformedDataBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -254,6 +258,14 @@ Resources:
         FromPort: 443
         ToPort: 443
         CidrIp: 0.0.0.0/0
+
+  CoffeETLLoadQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: coffeetl-load-queue.fifo
+      FifoQueue: True
+      ContentBasedDeduplication: True
+      VisibilityTimeout: 120
 
 Outputs:
   PublicIP:

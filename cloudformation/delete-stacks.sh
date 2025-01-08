@@ -1,5 +1,5 @@
 #!/bin/sh
-set -eu
+set -u
 
 aws_profile="$1"
 data_bucket="coffeetl-project-raw-data"
@@ -35,3 +35,4 @@ fi
 printf "\nWaiting for jobs to finish...\n"
 jobs
 wait $(jobs -p)
+printf "\nDone!\n"
