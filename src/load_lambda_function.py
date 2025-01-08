@@ -31,6 +31,9 @@ if creds_param.get('ResponseMetadata').get('HTTPStatusCode') == 200:
     port = creds['port']
     user = creds['user']
     password = creds['password']
+else:
+    logger.critical('Could not get DB credentials from SSM store.',
+        extra=creds_param)
 
 def lambda_handler(event, context):
     """
@@ -58,17 +61,20 @@ def lambda_handler(event, context):
 
     logger.info("Set up logger for load step.")
     error_flag = False
-    for record in event.get("Records", []):
-        logger.info("Handling new record: %s", record)
-        match record.get("eventSource"):
-            case 'aws:sqs':
-                branch_name = record['body']
-                logger.info("Loading tables for %s branch", branch_name)
-                # Do 5 DB loads here.
+    conn = None
+    try:
+        for record in event.get("Records", []):
+            logger.info("Handling new record: %s", record)
+            match record.get("eventSource"):
+                case 'aws:sqs':
+                    branch_name = record['body']
+                    logger.info("Loading tables for %s branch", branch_name)
+                    # Do 5 DB loads here.
 
-                logger.info("Connecting to redshift...")
-                with psycopg.connect(port=port, user=user, password=password, dbname=dbname, host=host, options='-c client_encoding=UTF8') as conn:
-                    # TODO: consider not doing this?
+                    logger.info("Connecting to redshift...")
+                    if conn is None:
+                        conn = psycopg.connect(port=port, user=user, password=password, dbname=dbname, host=host, options='-c client_encoding=UTF8')
+
                     logger.info("Connected to redshift, creating tables...")
                     create_tables(conn)
 
@@ -76,42 +82,56 @@ def lambda_handler(event, context):
                         file = f"{table}-{branch_name}.csv"
                         load_to_db(file, table, conn, aws_account, bucket_name='coffeetl-project-transformed-data')
                     logger.info("Load done!")
-            case 'aws:s3': # Basically depricated.
-                bucket_name = record["s3"]["bucket"]["name"]
-                object_key = unquote_plus(record['s3']['object']['key'])
-                filename = os.path.basename(object_key)
-                logger.debug("Object key: %s\nFilename: %s",
-                    object_key, filename)
-                if not object_key.endswith(".csv"):
-                    return {
-                        'statusCode': 300,
-                        'body': 'Unsupported file'
-                    }
-                # This should work, as long as no table contains a - in
-                # its name.
-                # We use _s to separate words in table names.
-                # Notably, branch names with -s are handled correctly due
-                # to maxsplit=1.
-                target_table, _ = object_key.split('-', maxsplit=1)
-                if target_table not in TABLES:
-                    error_flag = True
-                    logger.critical("Incoming table (%s) not recognised.", target_table)
-                    continue
+                case 'aws:s3': # Basically depricated.
+                    bucket_name = record["s3"]["bucket"]["name"]
+                    object_key = unquote_plus(record['s3']['object']['key'])
+                    filename = os.path.basename(object_key)
+                    logger.debug("Object key: %s\nFilename: %s",
+                        object_key, filename)
+                    if not object_key.endswith(".csv"):
+                        return {
+                            'statusCode': 300,
+                            'body': 'Unsupported file'
+                        }
+                    # This should work, as long as no table contains a - in
+                    # its name.
+                    # We use _s to separate words in table names, so it's 
+                    # fine.
+                    # Notably, branch names with -s are handled correctly due
+                    # to maxsplit=1.
+                    target_table, _ = object_key.split('-', maxsplit=1)
+                    if target_table not in TABLES:
+                        error_flag = True
+                        logger.critical("Incoming table (%s) not recognised.", target_table)
+                        continue
 
-                logger.info("Connecting to redshift...")
-                with psycopg.connect(port=port, user=user, password=password, dbname=dbname, host=host, options='-c client_encoding=UTF8') as conn:
+                    logger.info("Connecting to redshift...")
+                    if conn is None:
+                        conn = psycopg.connect(port=port, user=user, password=password, dbname=dbname, host=host, options='-c client_encoding=UTF8')
                     logger.info("Connected to redshift, creating tables...")
                     create_tables(conn)
                     logger.info("Tables created, loading data...")
                     load_to_db(filename, target_table, conn, aws_account, bucket_name=bucket_name)
                     logger.info("ETL Done!")
-            case _:
-                error_flag = True
-                logger.warning("Unsupported event record: %s", record)
-                continue
+                case _:
+                    error_flag = True
+                    logger.warning("Unsupported event record: %s", record)
+                    continue
+    except NameError as ex:
+        logger.critical("Unassigned variable, DB credential retrieval likely "
+            "failed.", exc_info=ex)
+        error_flag = True
+    finally:
+        # Using this instead of a context manager so that we only make one
+        # connection, only if the events we handle are valid.
+        # NB: Could assume this is the case and replace the try/finally with
+        # one large context manager, though if this lambda gets invoked
+        # incorrectly, we would make an unnecessary connection.
+        if conn is not None:
+            conn.close()
     if error_flag:
         return {
-            'statusCode': 300,
+            'statusCode': 500,
             'body': 'Lambda finished without processing all data.'
         }
     return {
