@@ -1,5 +1,5 @@
-# CoffeETL
-CoffeETL's data engineering bootcamp final project repo, including project sprint boards and issues.
+# Bootcamp Final Project - AWS ETL Pipeline
+This is a fully automated, scalable ETL pipeline I contributed to as part of a collaborative team project during my bootcamp. We designed the pipeline using AWS services such as Lambda, S3, Redshift, EC2, and CloudFormation, alongside Grafana, Docker, and Python to ensure efficient data processing and visualisation. My role involved working closely with the team to automate data extraction, transformation, and loading processes while also implementing intuitive dashboards using Grafana for insightful data presentation. The architecture we developed is modular and designed for easy scalability and adaptability for various data engineering needs.
 
 # Architecture
 
