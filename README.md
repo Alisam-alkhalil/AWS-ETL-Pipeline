@@ -23,6 +23,10 @@ store the code, etc. for the ETL stack deployment.
 Broadly speaking, the pipeline extracts raw data from `.csv` files, cleans and
 normalises that data, then loads it into a Redshift database.
 
+# Pipeline Architecture Diagram
+
+![plot](./pipeline-architecture.jpg)
+
 ## Breakdown
 ### Extract
 The whole pipeline is triggered when a `.csv` file is uploaded to the raw data
