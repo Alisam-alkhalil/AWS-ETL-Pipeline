@@ -25,7 +25,7 @@ normalises that data, then loads it into a Redshift database.
 
 # Pipeline Architecture Diagram
 
-![plot](./pipeline-architecture.jpg)
+![plot](./images/pipeline-architecture.jpg)
 
 ## Breakdown
 ### Extract
@@ -56,6 +56,13 @@ stack.
 
 Clients may use credentials given by the deployers to access visualisations
 we define in `./data_visualisation`
+
+**Sample Visualisations:**
+
+<img src="images/Daily%20Revenue%20Per%20Branch.jpg" alt="plot" width = "400"/>  <img src="images/Top Sold Item By Branch.jpg" alt="plot" width = "575"/>  
+
+
+<img src="images/EC2 Performance Metrics.jpg" alt="plot" width = "600"/>  <img src="images/Lambda Metrics.jpg" alt="plot" width = "575"/>  
 
 # Deploying the project
 
